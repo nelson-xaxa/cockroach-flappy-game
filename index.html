@@ -24,17 +24,18 @@
     display:flex;
     justify-content:center;
     align-items:center;
+    font-family:'Georgia',serif;
   }
   #wrap{
-    position:relative;
-    width:min(100vw, calc(100vh * 400 / 578));
-    height:min(100vh, calc(100vw * 578 / 400));
-    max-width:400px;
-    max-height:578px;
-    aspect-ratio:400/578;
+     position:relative;
+    width:100vw;
+    height:100vh;
+    max-width:430px;
+    max-height:932px;
+    margin:auto;
     overflow:hidden;
-    border-radius:14px;
-    box-shadow:0 0 20px rgba(0,0,0,.5);
+    border-radius:0;
+    box-shadow:none;
   }
   canvas{
     width:100%;
@@ -68,18 +69,30 @@ const playerImg = new Image();
 playerImg.src = "modih.png";
 
 // ---- logical resolution ----
-const W = 400, H = 578;
-function resizeCanvas(){
-    const dpr = window.devicePixelRatio || 1;
+let W = 400;
+let H = 578;
 
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
+function resizeGame(){
 
-    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const ratio = 400/578;
+
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    if(W/H > ratio){
+        W = H*ratio;
+    }else{
+        H = W/ratio;
+    }
+
+    canvas.width = W;
+    canvas.height = H;
 }
 
-resizeCanvas();
-window.addEventListener("resize", resizeCanvas);
+resizeGame();
+
+window.addEventListener("resize",resizeGame);
+  const SCALE = () => W/400;
 
 // ---- game state ----
 let state = 'ready'; // ready | playing | over
@@ -89,15 +102,15 @@ let frame = 0;
 
 const gravity = 0.42;
 const flapVel = -7.6;
-const pipeGap = 150;
-const pipeW = 70;
+const pipeGap = 150*SCALE();
+const pipeW = 70*SCALE();
 const pipeSpeed = 2.4;
 const pipeInterval = 110; // frames between pipes
 
 let player, pipes, groundOffset;
 
 function resetGame(){
-  player = { x: 90, y: H/2, vy: 0, r: 16, rot: 0 };
+  player = { x: 90, y: H/2, vy: 0, r: 16*SCALE(), rot: 0 };
   pipes = [];
   groundOffset = 0;
   score = 0;
