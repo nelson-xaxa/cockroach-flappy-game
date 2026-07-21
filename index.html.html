@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cockroach Janta Party — Flappy Edition</title>
+<style>
+  :root{
+    --saffron:#FF9933;
+    --saffron-deep:#E5771A;
+    --white:#F7F3E8;
+    --green:#138808;
+    --green-deep:#0B5C05;
+    --ink:#241A10;
+    --roach:#6B4226;
+    --roach-dark:#3E2413;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;height:100%;
+    background:#111;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Georgia',serif;
+    overflow:hidden;
+  }
+  #wrap{
+    position:relative;
+    width:min(94vw, 480px);
+    aspect-ratio: 9/13;
+    border-radius:14px;
+    overflow:hidden;
+    box-shadow:0 0 0 8px var(--ink), 0 20px 60px rgba(0,0,0,.6);
+  }
+  canvas{
+    display:block;
+    width:100%;height:100%;
+    touch-action:none;
+    cursor:pointer;
+  }
+  #hint{
+    position:absolute;
+    bottom:10px;left:0;right:0;
+    text-align:center;
+    color:rgba(247,243,232,.85);
+    font-family:'Trebuchet MS',sans-serif;
+    font-size:13px;
+    letter-spacing:.5px;
+    pointer-events:none;
+    text-shadow:0 1px 3px rgba(0,0,0,.6);
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+  <div id="hint">Click / Tap / Space to flap</div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const playerImg = new Image();
+playerImg.src = "modih.png.png";
+
+// ---- logical resolution ----
+const W = 400, H = 578;
+canvas.width = W;
+canvas.height = H;
+
+// ---- game state ----
+let state = 'ready'; // ready | playing | over
+let score = 0;
+let best = 0;
+let frame = 0;
+
+const gravity = 0.42;
+const flapVel = -7.6;
+const pipeGap = 150;
+const pipeW = 70;
+const pipeSpeed = 2.4;
+const pipeInterval = 110; // frames between pipes
+
+let player, pipes, groundOffset;
+
+function resetGame(){
+  player = { x: 90, y: H/2, vy: 0, r: 16, rot: 0 };
+  pipes = [];
+  groundOffset = 0;
+  score = 0;
+  frame = 0;
+}
+resetGame();
+
+// ===================== INPUT =====================
+function flap(){
+  if(state === 'ready'){
+    state = 'playing';
+    player.vy = flapVel;
+  } else if(state === 'playing'){
+    player.vy = flapVel;
+  } else if(state === 'over'){
+    resetGame();
+    state = 'ready';
+  }
+}
+window.addEventListener('keydown', e=>{
+  if(e.code === 'Space'){ e.preventDefault(); flap(); }
+});
+canvas.addEventListener('mousedown', flap);
+canvas.addEventListener('touchstart', e=>{ e.preventDefault(); flap(); }, {passive:false});
+
+// ===================== BACKGROUND =====================
+// tricolour sky with a faint ashoka-chakra watermark and a protest-crowd silhouette
+
+function drawBackground(){
+  // tricolour vertical bands, softened into a sky gradient
+  const bandH = H * 0.30;
+  const g1 = ctx.createLinearGradient(0,0,0,bandH);
+  g1.addColorStop(0, '#FFB05C');
+  g1.addColorStop(1, '#FF9933');
+  ctx.fillStyle = g1;
+  ctx.fillRect(0,0,W,bandH);
+
+  const g2 = ctx.createLinearGradient(0,bandH,0,bandH*2);
+  g2.addColorStop(0, '#FBF7EC');
+  g2.addColorStop(1, '#F1EAD6');
+  ctx.fillStyle = g2;
+  ctx.fillRect(0,bandH,W,bandH);
+
+  const g3 = ctx.createLinearGradient(0,bandH*2,0,H);
+  g3.addColorStop(0, '#3E9A1F');
+  g3.addColorStop(1, '#0B5C05');
+  ctx.fillStyle = g3;
+  ctx.fillRect(0,bandH*2,W,H-bandH*2);
+
+  // faint ashoka chakra watermark in the white band
+  ctx.save();
+  ctx.globalAlpha = 0.16;
+  ctx.strokeStyle = '#1B3B8C';
+  ctx.lineWidth = 2;
+  const cx = W/2, cy = bandH*1.5, rad = bandH*0.42;
+  ctx.beginPath();
+  ctx.arc(cx,cy,rad,0,Math.PI*2);
+  ctx.stroke();
+  for(let i=0;i<24;i++){
+    const a = (Math.PI*2/24)*i;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.cos(a)*rad, cy+Math.sin(a)*rad);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(cx,cy,rad*0.06,0,Math.PI*2);
+  ctx.fillStyle = '#1B3B8C';
+  ctx.fill();
+  ctx.restore();
+
+  // distant rally crowd silhouette, parallax scroll
+  drawCrowd(bandH*2 - 6, 0.35, '#062F03');
+  drawCrowd(bandH*2 + 14, 0.6, '#04220A');
+}
+
+function drawCrowd(baseY, speedFactor, color){
+  ctx.save();
+  ctx.fillStyle = color;
+  const spacing = 46;
+  const offset = (frame * pipeSpeed * speedFactor) % spacing;
+  for(let x = -spacing - offset; x < W + spacing; x += spacing){
+    // head
+    ctx.beginPath();
+    ctx.arc(x, baseY - 22, 7, 0, Math.PI*2);
+    ctx.fill();
+    // body
+    ctx.beginPath();
+    ctx.moveTo(x-8, baseY);
+    ctx.lineTo(x-6, baseY-16);
+    ctx.lineTo(x+6, baseY-16);
+    ctx.lineTo(x+8, baseY);
+    ctx.closePath();
+    ctx.fill();
+    // raised arm + placard
+    ctx.beginPath();
+    ctx.moveTo(x+5, baseY-14);
+    ctx.lineTo(x+13, baseY-30);
+    ctx.lineTo(x+16, baseY-30);
+    ctx.lineTo(x+9, baseY-12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(x+10, baseY-40, 10, 8);
+  }
+  ctx.restore();
+}
+
+// ===================== COCKROACH PIPES =====================
+// each pipe obstacle is drawn as a giant cockroach body reaching in from
+// top or bottom, head + antennae pointing toward the gap.
+
+function roundedCapsule(x, yStart, yEnd, w){
+  const r = w/2;
+  ctx.beginPath();
+  ctx.moveTo(x - r, yStart + r);
+  ctx.arc(x, yStart + r, r, Math.PI, 0);
+  ctx.lineTo(x + r, yEnd - r);
+  ctx.arc(x, yEnd - r, r, 0, Math.PI);
+  ctx.closePath();
+}
+
+function drawRoachPipe(cx, yStart, yEnd, w, headAtEnd){
+  // headAtEnd: true -> head/antennae at yEnd, legs along the body
+  const len = yEnd - yStart;
+  const dir = headAtEnd ? 1 : -1;
+
+  ctx.save();
+
+  // body capsule
+  const grad = ctx.createLinearGradient(cx - w/2, 0, cx + w/2, 0);
+  grad.addColorStop(0, '#4A2A15');
+  grad.addColorStop(0.5, '#8A5A2E');
+  grad.addColorStop(1, '#3E2413');
+  roundedCapsule(cx, yStart, yEnd, w);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#1F1209';
+  ctx.stroke();
+
+  // segment stripes across the body
+  ctx.strokeStyle = 'rgba(20,10,4,0.55)';
+  ctx.lineWidth = 2;
+  const segments = Math.max(3, Math.floor(len / 26));
+  for(let i=1;i<segments;i++){
+    const yy = yStart + (len/segments)*i;
+    ctx.beginPath();
+    ctx.moveTo(cx - w/2 + 4, yy);
+    ctx.quadraticCurveTo(cx, yy + 5, cx + w/2 - 4, yy);
+    ctx.stroke();
+  }
+
+  // legs — three pairs spaced along the body, angled away from the head
+  ctx.strokeStyle = '#241407';
+  ctx.lineWidth = 3.4;
+  ctx.lineCap = 'round';
+  const legCount = 3;
+  for(let i=0;i<legCount;i++){
+    const t = 0.28 + i*0.24;
+    const legY = yStart + len*t;
+    const bendOut = 18 + i*3;
+    const footY = legY + dir * (10 + i*2);
+    // left leg
+    ctx.beginPath();
+    ctx.moveTo(cx - w/2 + 3, legY);
+    ctx.lineTo(cx - w/2 - bendOut, legY + 6*dir);
+    ctx.lineTo(cx - w/2 - bendOut - 6, footY + 6*dir);
+    ctx.stroke();
+    // right leg
+    ctx.beginPath();
+    ctx.moveTo(cx + w/2 - 3, legY);
+    ctx.lineTo(cx + w/2 + bendOut, legY + 6*dir);
+    ctx.lineTo(cx + w/2 + bendOut + 6, footY + 6*dir);
+    ctx.stroke();
+  }
+
+  // head + antennae at the gap-facing end
+  const headY = headAtEnd ? yEnd : yStart;
+  const headR = w*0.42;
+  ctx.beginPath();
+  ctx.ellipse(cx, headY, headR, headR*0.8, 0, 0, Math.PI*2);
+  const hgrad = ctx.createRadialGradient(cx, headY, 2, cx, headY, headR);
+  hgrad.addColorStop(0, '#7A4E28');
+  hgrad.addColorStop(1, '#341D0C');
+  ctx.fillStyle = hgrad;
+  ctx.fill();
+  ctx.strokeStyle = '#1F1209';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // eyes
+  ctx.fillStyle = '#0B0603';
+  ctx.beginPath();
+  ctx.arc(cx - headR*0.4, headY - dir*headR*0.15, 3.2, 0, Math.PI*2);
+  ctx.arc(cx + headR*0.4, headY - dir*headR*0.15, 3.2, 0, Math.PI*2);
+  ctx.fill();
+
+  // antennae, curving away from the body
+  ctx.strokeStyle = '#1F1209';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 4, headY - dir*headR*0.6);
+  ctx.quadraticCurveTo(cx - 22, headY - dir*(headR+14), cx - 30, headY - dir*(headR+30));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + 4, headY - dir*headR*0.6);
+  ctx.quadraticCurveTo(cx + 22, headY - dir*(headR+14), cx + 30, headY - dir*(headR+30));
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ===================== PLAYER =====================
+function drawPlayer() {
+    ctx.save();
+
+    ctx.translate(player.x, player.y);
+
+    const targetRot = Math.max(-0.5, Math.min(1.1, player.vy * 0.09));
+    player.rot += (targetRot - player.rot) * 0.25;
+    ctx.rotate(player.rot);
+
+    if (playerImg.complete) {
+        ctx.drawImage(
+            playerImg,
+            -30,
+            -30,
+            80,
+            80
+        );
+    }
+
+    ctx.restore();
+}
+
+// ===================== PIPES LOGIC =====================
+function spawnPipe(){
+  const margin = 60;
+  const gapY = margin + Math.random() * (H - margin*2 - pipeGap);
+  pipes.push({ x: W + pipeW, gapY, passed:false });
+}
+
+function updatePipes(){
+  if(frame % pipeInterval === 0) spawnPipe();
+  for(const p of pipes){
+    p.x -= pipeSpeed;
+    if(!p.passed && p.x + pipeW/2 < player.x){
+      p.passed = true;
+      score++;
+    }
+  }
+  pipes = pipes.filter(p => p.x > -pipeW);
+}
+
+function drawPipes(){
+  for(const p of pipes){
+    drawRoachPipe(p.x, 0, p.gapY, pipeW, true);
+    drawRoachPipe(p.x, p.gapY + pipeGap, H, pipeW, false);
+  }
+}
+
+function checkCollision(){
+  if(player.y - player.r < 0 || player.y + player.r > H){
+    return true;
+  }
+  for(const p of pipes){
+    const withinX = player.x + player.r > p.x - pipeW/2 && player.x - player.r < p.x + pipeW/2;
+    if(withinX){
+      const inGap = player.y - player.r > p.gapY && player.y + player.r < p.gapY + pipeGap;
+      if(!inGap) return true;
+    }
+  }
+  return false;
+}
+
+// ===================== UI TEXT =====================
+function drawScore(){
+  ctx.save();
+  ctx.font = 'bold 40px Georgia, serif';
+  ctx.fillStyle = '#241A10';
+  ctx.textAlign = 'center';
+  ctx.fillText(score, W/2, 60);
+  ctx.restore();
+}
+
+function drawReady(){
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(36,26,16,0.85)';
+  ctx.font = 'bold 24px Georgia, serif';
+  ctx.fillText('COCKROACH JANTA PARTY', W/2, H*0.38);
+  ctx.font = '15px Trebuchet MS, sans-serif';
+  ctx.fillText('NEX-Flappy Edition', W/2, H*0.38 + 22);
+  ctx.restore();
+}
+
+function drawGameOver(){
+  const panelY = H*0.36, panelH = H*0.24;
+  ctx.save();
+  ctx.fillStyle = 'rgba(50,45,40,0.88)';
+  ctx.fillRect(0, panelY, W, panelH);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#F7F3E8';
+  ctx.font = 'bold 30px Georgia, serif';
+  ctx.fillText('Bach k kaha jaoge?', W/2, panelY + panelH*0.4);
+
+  ctx.font = '16px Trebuchet MS, sans-serif';
+  ctx.fillText(`Score: ${score}   Best: ${best}`, W/2, panelY + panelH*0.65);
+
+  ctx.font = '13px Trebuchet MS, sans-serif';
+  ctx.fillStyle = 'rgba(247,243,232,0.8)';
+  ctx.fillText('Click / Tap / Space to retry', W/2, panelY + panelH*0.88);
+  ctx.restore();
+}
+
+// ===================== MAIN LOOP =====================
+function update(){
+  frame++;
+  drawBackground();
+
+  if(state === 'playing'){
+    player.vy += gravity;
+    player.y += player.vy;
+    updatePipes();
+    if(checkCollision()){
+      state = 'over';
+      best = Math.max(best, score);
+    }
+  }
+
+  drawPipes();
+  drawPlayer();
+  drawScore();
+
+  if(state === 'ready') drawReady();
+  if(state === 'over') drawGameOver();
+
+  requestAnimationFrame(update);
+}
+update();
+</script>
+</body>
+</html>
