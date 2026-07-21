@@ -334,12 +334,13 @@ function drawPlayer() {
     ctx.rotate(player.rot);
 
     if (playerImg.complete) {
-        ctx.drawImage(
-            playerImg,
-            -30,
-            -30,
-            80,
-            80
+    const s = 80 * SCALE();
+    ctx.drawImage(
+        playerImg,
+        -s/2,
+        -s/2,
+        s,
+        s
         );
     }
 
