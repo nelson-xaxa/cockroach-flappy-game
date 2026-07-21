@@ -67,8 +67,6 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const playerImg = new Image();
 playerImg.src = "modih.png"; 
-const gameOverSound = new Audio("gameover.mp3");
-gameOverSound.volume = 0.8;
 
 // ---- logical resolution ----
 let W = 400;
@@ -441,8 +439,6 @@ function update(){
     updatePipes();
     if(checkCollision()){
     state = 'over';
-    gameOverSound.currentTime = 0;
-    gameOverSound.play();
     best = Math.max(best, score);
 }
     }
