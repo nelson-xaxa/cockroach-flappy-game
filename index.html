@@ -69,8 +69,17 @@ playerImg.src = "modih.png";
 
 // ---- logical resolution ----
 const W = 400, H = 578;
-canvas.width = W;
-canvas.height = H;
+function resizeCanvas(){
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
 
 // ---- game state ----
 let state = 'ready'; // ready | playing | over
